@@ -1,0 +1,5 @@
+yolov8x.pt
+myenv/
+__pycache__/
+*.pyc
+
