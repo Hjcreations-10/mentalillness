@@ -292,15 +292,7 @@ def build_success_story(user_input: str) -> str:
             "✨ They faced challenges but found resilience, clarity, and growth.\n\n"
             "🏰 Finally, they reached a grand mansion — built of peace and self-trust.")
 
-#def create_video_from_text(story_text: str):
- #   clip = TextClip(story_text, fontsize=28, color='white', size=(1280,720), method='caption', align='center', font='Arial-Bold')
-  #  clip = clip.set_duration(12)
-   # bg = ColorClip(size=(1280,720), color=(18,24,37)).set_duration(12)
-    #video = CompositeVideoClip([bg, clip.set_pos('center')])
-    #tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    #out = tmp.name
-    #video.write_videofile(out, fps=24, codec="libx264", audio=False, verbose=False, logger=None)
-    #return out
+
 
 def mansion_page():
     play_music(MUSIC_MANSION)
