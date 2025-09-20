@@ -1,3 +1,6 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 steps:
   - name: 'gcr.io/buildpacks/builder'
     args: ['build', '-t', 'gcr.io/civil-ivy-472619-a7/journey2025', '.']
