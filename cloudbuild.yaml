@@ -3,6 +3,7 @@ options:
 
 steps:
   - name: 'gcr.io/buildpacks/builder'
-    args: ['build', '-t', 'gcr.io/civil-ivy-472619-a7/journey2025', '.']
+    args: ['pack', 'build', 'gcr.io/civil-ivy-472619-a7/journey2025', '--path', '.']
+
 images:
   - 'gcr.io/civil-ivy-472619-a7/journey2025'
