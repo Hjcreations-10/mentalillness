@@ -12,8 +12,8 @@ from streamlit_mic_recorder import mic_recorder
 import time
 import os
 import random
-from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
 
+#from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
 # ----------------------------
 # Page config & session init
 # ----------------------------
@@ -292,7 +292,7 @@ def build_success_story(user_input: str) -> str:
             f"“{user_input}”\n\n"
             "✨ They faced challenges but found resilience, clarity, and growth.\n\n"
             "🏰 Finally, they reached a grand mansion — built of peace and self-trust.")
-
+'''
 def create_video_from_text(story_text: str):
     clip = TextClip(story_text, fontsize=28, color='white', size=(1280,720), method='caption', align='center', font='Arial-Bold')
     clip = clip.set_duration(12)
@@ -302,7 +302,7 @@ def create_video_from_text(story_text: str):
     out = tmp.name
     video.write_videofile(out, fps=24, codec="libx264", audio=False, verbose=False, logger=None)
     return out
-
+'''
 def mansion_page():
     play_music(MUSIC_MANSION)
     st.title("🏰 Mansion — Your Success Story")
