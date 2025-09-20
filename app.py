@@ -1,297 +1,357 @@
-
 import streamlit as st
 import whisper
 import tempfile
+import spacy
+from textblob import TextBlob
+from transformers import pipeline
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain_openai import ChatOpenAI   # ✅ FIXED import
+import pyttsx3
+from streamlit_mic_recorder import mic_recorder
+import time
 import os
 import random
-import time
-from streamlit_mic_recorder import mic_recorder
-from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
 
-# --- PAGE CONFIG & SESSION STATE INIT ---
+# ----------------------------
+# Page config & session init
+# ----------------------------
 st.set_page_config(page_title="Journey to Wellness Prototype", layout="centered")
-for key, default_value in {
-    "page": "home",
-    "credits": 0,
-    "user_input": "",
-    "user_original": "",
-    "chat_history": [],
-    "moods": [],
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default_value
+if "page" not in st.session_state:
+    st.session_state.page = "home"
+if "transport" not in st.session_state:
+    st.session_state.transport = None
+if "credits" not in st.session_state:
+    st.session_state.credits = 0
+if "user_input" not in st.session_state:
+    st.session_state.user_input = ""
+if "user_original" not in st.session_state:
+    st.session_state.user_original = ""
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "moods" not in st.session_state:
+    st.session_state.moods = []
 
-# --- UTILITY & MODEL FUNCTIONS ---
-@st.cache_resource
-def load_whisper_model():
-    """Load the Whisper model, caching it for efficiency."""
-    try:
-        model = whisper.load_model("base")
-        return model
-    except Exception as e:
-        st.error(f"Failed to load Whisper model: {e}")
-        return None
+# ----------------------------
+# MUSIC EMBEDS
+# ----------------------------
+MUSIC_HOME = """<iframe width="0" height="0" allow="autoplay"
+src="https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fbrunuhville%2Fred-queens-lullaby&auto_play=true"></iframe>"""
+MUSIC_MANSION = """<iframe width="0" height="0" allow="autoplay"
+src="https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fjustin-zaitsev-115677774%2Ffailure-to-success-main&auto_play=true"></iframe>"""
 
-def transcribe_audio(audio_path):
-    """Transcribes an audio file using the Whisper model."""
-    whisper_model = load_whisper_model()
-    if whisper_model:
+def play_music(embed_html: str):
+    st.markdown(embed_html, unsafe_allow_html=True)
+
+# ----------------------------
+# Models
+# ----------------------------
+whisper_model = None
+nlp_spacy = None
+sentiment_pipeline = None
+conversation_chain = None
+
+def ensure_models():
+    global whisper_model, nlp_spacy, sentiment_pipeline, conversation_chain
+    if whisper_model is None:
         try:
-            result = whisper_model.transcribe(audio_path)
-            return result["text"].strip()
-        except Exception as e:
-            return ""
+            whisper_model = whisper.load_model("base")
+            st.session_state.whisper_ready = True
+        except:
+            whisper_model = None
+    if nlp_spacy is None:
+        try:
+            nlp_spacy = spacy.load("en_core_web_sm")
+        except:
+            pass
+    if sentiment_pipeline is None:
+        try:
+            sentiment_pipeline = pipeline("sentiment-analysis")
+        except:
+            pass
+    if conversation_chain is None:
+        try:
+            memory = ConversationBufferMemory()
+            conversation_chain = ConversationChain(
+                llm=ChatOpenAI(model_name="gpt-4", temperature=0.7), memory=memory
+            )
+        except:
+            conversation_chain = None
+
+def transcribe_audio(path):
+    ensure_models()
+    if 'whisper_ready' in st.session_state and whisper_model is not None:
+        res = whisper_model.transcribe(path)
+        return res.get("text","").strip()
     return ""
 
-def get_simple_sentiment(text: str):
-    """Provides a simple sentiment analysis based on keywords."""
-    text_lower = text.lower()
-    positive_words = ["happy", "good", "great", "well", "positive", "joy"]
-    negative_words = ["sad", "bad", "unhappy", "stress", "anxious", "pain"]
-    
-    if any(word in text_lower for word in positive_words):
-        return "positive"
-    elif any(word in text_lower for word in negative_words):
-        return "negative"
-    return "neutral"
+def analyze_text(text: str):
+    ensure_models()
+    sentiment = None
+    tone = None
+    entities = []
+    try:
+        if sentiment_pipeline:
+            sentiment = sentiment_pipeline(text)[0]['label']
+    except:
+        pass
+    try:
+        blob = TextBlob(text)
+        tone = "positive" if blob.sentiment.polarity > 0.3 else "negative" if blob.sentiment.polarity < -0.3 else "neutral"
+    except:
+        pass
+    try:
+        if nlp_spacy:
+            entities = [(ent.text, ent.label_) for ent in nlp_spacy(text).ents]
+    except:
+        pass
+    return sentiment, tone, entities
 
-def get_simple_bot_response(user_input: str) -> str:
-    """A simple, rule-based chatbot response function."""
-    crisis_keywords = ["suicide", "kill myself", "end my life", "want to die", "hopeless"]
-    if any(kw in user_input.lower() for kw in crisis_keywords):
+def get_chat_response(user_input:str):
+    ensure_models()
+    crisis = ["suicide","kill myself","end my life","want to die","hopeless"]
+    if any(kw in user_input.lower() for kw in crisis):
         return "💜 You're not alone. If you're in danger, please call emergency services. In India: AASRA 91-9820466726."
-    
-    if "hello" in user_input.lower():
-        return "Hello! Thanks for reaching out. How are you feeling today?"
-    if "?" in user_input:
-        return "That's a great question. Tell me more about what's on your mind."
+    if conversation_chain:
+        try:
+            return conversation_chain.run(user_input)
+        except:
+            pass
     return "Thanks for sharing. I hear you — tell me more."
 
-def create_image_from_text(story_text: str):
-    """Generates an image from text using the Pillow library."""
-    width, height = 1280, 720
-    bg_color = (18, 24, 37)
-    text_color = "white"
-    
-    img = Image.new('RGB', (width, height), color=bg_color)
-    d = ImageDraw.Draw(img)
-    
+def speak_text_tts(text: str):
     try:
-        font_path = "arial.ttf"  # This font might not be available
-        font_size = 30
-        font = ImageFont.truetype(font_path, font_size)
-    except IOError:
-        font = ImageFont.load_default()
-        font_size = 20
+        engine = pyttsx3.init()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        path = tmp.name
+        engine.save_to_file(text, path)
+        engine.runAndWait()
+        return path
+    except:
+        return None
 
-    # Basic text wrapping
-    lines = []
-    max_width = width - 100
-    words = story_text.split(' ')
-    current_line = ""
-    for word in words:
-        if d.textsize(current_line + ' ' + word, font=font)[0] < max_width:
-            current_line += ' ' + word
-        else:
-            lines.append(current_line.strip())
-            current_line = word
-    lines.append(current_line.strip())
-    
-    story_wrapped = "\n".join(lines)
-    
-    # Calculate text position
-    text_width, text_height = d.textsize(story_wrapped, font=font)
-    x = (width - text_width) / 2
-    y = (height - text_height) / 2
-    
-    d.text((x, y), story_wrapped, font=font, fill=text_color)
-    
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    img.save(temp_file.name)
-    return temp_file.name
-
-# --- PAGE COMPONENTS ---
+# ----------------------------
+# Reflection Box
+# ----------------------------
 def reflection_box():
-    """Allows users to input text or record audio for reflection."""
     st.subheader("💬 Reflect — how are you feeling?")
-    typed_text = st.text_area("Write your thoughts:", value=st.session_state.get("user_input", ""), height=150)
-    audio_data = mic_recorder(start_prompt="🎙️", stop_prompt="⏹️", just_once=False, key="mic_recorder")
+    typed = st.text_area("Write your thoughts:", value=st.session_state.get("user_input",""), height=150)
+    audio_data = mic_recorder(start_prompt="🎙️", stop_prompt="⏹️", just_once=False, key=f"mic_{st.session_state.page}")
+    reflection_text = ""
 
-    reflection_text = typed_text.strip()
-    
-    if audio_data and audio_data.get("bytes"):
+    if audio_data and isinstance(audio_data, dict) and audio_data.get("bytes"):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
             f.write(audio_data["bytes"])
             audio_path = f.name
-        
-        transcribed_text = transcribe_audio(audio_path)
+        text = transcribe_audio(audio_path)
+        reflection_text = text or ""
         os.remove(audio_path)
-        
-        if transcribed_text:
-            st.success("🎙️ Transcribed: " + transcribed_text)
-            reflection_text = transcribed_text
-            st.session_state.user_input = reflection_text
-            st.session_state.user_original = reflection_text
-            st.experimental_rerun()
+        if reflection_text:
+            st.success("🎙️ Transcribed: " + reflection_text)
+    elif typed and typed.strip():
+        reflection_text = typed.strip()
 
-    if typed_text != st.session_state.user_input and typed_text:
-        st.session_state.user_input = typed_text
-        st.session_state.user_original = typed_text
-        st.experimental_rerun()
+    if reflection_text:
+        st.session_state.user_input = reflection_text
+        st.session_state.user_original = reflection_text
 
+# ----------------------------
+# Chatbot inside game
+# ----------------------------
 def chatbot_in_game():
-    """The main chatbot interface for the game pages."""
     st.subheader("🧠 Chat with the Wellness Bot")
     reflection_box()
 
     st.markdown("### Conversation")
-    for sender, msg in st.session_state.chat_history:
-        if sender == "user":
+    for sender,msg in st.session_state.chat_history[-10:]:
+        if sender=="user":
             st.markdown(f'<div style="background:#DCF8C6;padding:8px;border-radius:10px;margin:6px">🗣️ {msg}</div>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div style="background:#F1F0F0;padding:8px;border-radius:10px;margin:6px">🤖 {msg}</div>', unsafe_allow_html=True)
 
     if st.button("➡ Send to Bot"):
-        user_input = st.session_state.get("user_input", "").strip()
+        user_input = st.session_state.get("user_input","").strip()
         if len(user_input) < 5:
             st.warning("Please share a bit more before sending.")
         else:
-            sentiment = get_simple_sentiment(user_input)
-            reply = get_simple_bot_response(user_input)
+            sentiment, tone, entities = analyze_text(user_input)
+            reply = get_chat_response(user_input)
             st.session_state.chat_history.append(("user", user_input))
             st.session_state.chat_history.append(("bot", reply))
             st.session_state.moods.append({
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "text": user_input, "sentiment": sentiment
+                "text": user_input, "tone": tone, "sentiment": sentiment
             })
-            st.session_state.user_input = "" # Clear input area
-            st.experimental_rerun()
-            
+            tts_path = speak_text_tts(reply)
+            if tts_path: st.audio(tts_path)
+
     if st.session_state.moods:
-        st.markdown("### Mood Tracker")
+        st.markdown("### Mood tracker")
         for m in reversed(st.session_state.moods[-5:]):
-            st.write(f"**{m['sentiment']}** — {m['time']}")
+            st.write(f"**{m['tone']}** ({m['sentiment']}) — {m['time']}")
             st.caption(m["text"])
 
+    # Unlock Mansion only if 3+ credits
     if st.session_state.credits >= 3:
         if st.button("➡ Continue to Mansion"):
             st.session_state.page = "mansion"
-            st.experimental_rerun()
     else:
-        st.info(f"✨ Earn at least 3 credits from games to unlock your Mansion story. (Current: {st.session_state.credits})")
+        st.info("✨ Earn at least 3 credits from games to unlock your Mansion story.")
 
-# --- GAME PAGE LOGIC ---
+# ----------------------------
+# Games
+# ----------------------------
 def train_game():
     st.header("🚆 Train: Object Hunt")
     st.write("Find the hidden objects using hints.")
     st.image("https://gamersunite.s3.amazonaws.com/uploads/june-s-journey-hidden-object-mystery-game/1531636021150", width='stretch')
-    objects = {"butterfly": "A small creature with wings", "wheel": "Round part found on vehicles", "horseshoe": "Lucky, horse related"}
-    hidden_objects = random.sample(list(objects.keys()), 3)
-    
-    with st.form("train_form"):
-        for i, obj in enumerate(hidden_objects):
-            st.write(f"Hint {i+1}: {objects[obj]}")
-            st.text_input(f"Guess for Hint {i+1}:", key=f"train_guess_{i}")
-        submitted = st.form_submit_button("Check Answers ✅")
-
-    if submitted:
-        score = sum(1 for i, obj in enumerate(hidden_objects) if st.session_state[f"train_guess_{i}"].strip().lower() == obj)
+    objects = {
+        "butterfly":"🦋 A small creature with wings",
+        "wheel":"⚙️ Round part found on vehicles",
+        "horseshoe":"🐎 Lucky, horse related",
+        "metal shield":"🛡️ Used for protection",
+        "violin box":"🎻 Stores a violin",
+        "compass":"🧭 Points north"
+    }
+    hidden = random.sample(list(objects.keys()), 3)
+    for i,h in enumerate(hidden, start=1):
+        st.write(f"Hint {i}: {objects[h]}")
+    guesses=[st.text_input(f"Guess #{i+1}:", key=f"train_guess_{i}") for i in range(3)]
+    if st.button("Check Answers ✅"):
+        score=sum(1 for g,h in zip(guesses,hidden) if g.strip().lower()==h)
         st.session_state.credits += score
-        st.success(f"Found {score}/3 objects. Total credits: {st.session_state.credits}")
-        st.experimental_rerun()
-        
+        st.success(f"Found {score}/3 — Total credits: {st.session_state.credits}")
     chatbot_in_game()
 
 def car_game():
     st.header("🚗 Car: Puzzle Rush")
-    puzzles = [("What has keys but can’t open locks?", "piano"), ("I’m tall when I’m young, and short when I’m old. What am I?", "candle")]
-    question, answer = random.choice(puzzles)
-    
-    with st.form("car_form"):
-        ans = st.text_input(question)
-        submitted = st.form_submit_button("Submit Answer ✅")
-        
-    if submitted:
-        if ans.strip().lower() == answer:
-            st.session_state.credits += 1
+    puzzles=[("What has keys but can’t open locks?","piano"),
+             ("I’m tall when I’m young, and short when I’m old. What am I?","candle"),
+             ("What gets wetter the more it dries?","towel")]
+    q,a=random.choice(puzzles)
+    ans=st.text_input(q, key="car_ans")
+    if st.button("Submit Answer ✅"):
+        if ans.strip().lower()==a:
+            st.session_state.credits +=1
             st.success("Correct! 🎉")
         else:
-            st.error(f"Wrong — the answer was: {answer}")
+            st.error(f"Wrong — answer was: {a}")
         st.info(f"Credits: {st.session_state.credits}")
-        st.experimental_rerun()
-    
     chatbot_in_game()
 
 def bus_game():
+    # 🎵 Play transport page music
+    
+
     st.header("🚌 Bus: Word Hunt")
     st.markdown("Find the missing words (bus stops). You can ask for hints if you need them!")
     st.image("https://puzzlestoplay.com/wp-content/uploads/2021/01/bus-driver-word-search-puzzle-photo-506x675.jpg", width='stretch')
-    words = {"route": "From bottom, line 6", "driver": "Top, line 3", "ticket": "Center, line 8"}
+    # Hidden words with hints
+    words = {
+        "route": "From bottom, line 6",
+        "driver": "Top, line 3",
+        "ticket": "Center, line 8",
+        "wheel": "Right side, vertical"
+    }
+
+    # Show "Get Hints" button
+    if "bus_hints_shown" not in st.session_state:
+        st.session_state.bus_hints_shown = False
 
     if st.button("💡 Show Hints"):
-        for w, h in words.items():
-            st.info(f"Hint: {h}")
+        st.session_state.bus_hints_shown = True
 
-    with st.form("bus_form"):
-        for i, word in enumerate(words.keys()):
-            st.text_input(f"Guess #{i+1}:", key=f"bus_guess_{i}")
-        submitted = st.form_submit_button("Check Answers ✅")
+    if st.session_state.bus_hints_shown:
+        st.markdown("### 🔍 Hints")
+        for i, (w, h) in enumerate(words.items(), start=1):
+            st.write(f"Hint {i}: {h}")
 
-    if submitted:
-        score = sum(1 for i, word in enumerate(words.keys()) if st.session_state[f"bus_guess_{i}"].strip().lower() == word)
+    # Input boxes for guesses
+    guesses = [
+        st.text_input(f"Guess #{i+1}:", key=f"bus_guess_{i}")
+        for i in range(len(words))
+    ]
+
+    # Check answers button
+    if st.button("Check Answers ✅"):
+        hidden = list(words.keys())
+        score = sum(1 for g, h in zip(guesses, hidden) if g.strip().lower() == h)
         st.session_state.credits += score
-        st.success(f"Found {score}/{len(words)} — Total credits: {st.session_state.credits}")
-        st.experimental_rerun()
-    
+        st.success(f"Found {score}/{len(hidden)} — Total credits: {st.session_state.credits}")
+
+    # After game, chatbot stage
     chatbot_in_game()
 
-# --- MANSION PAGE ---
+
+# ----------------------------
+# Mansion Page
+# ----------------------------
+def build_success_story(user_input: str) -> str:
+    return (f"🌍 Once upon a time, a traveler set out carrying these thoughts:\n\n"
+            f"“{user_input}”\n\n"
+            "✨ They faced challenges but found resilience, clarity, and growth.\n\n"
+            "🏰 Finally, they reached a grand mansion — built of peace and self-trust.")
+
+def create_video_from_text(story_text: str):
+    clip = TextClip(story_text, fontsize=28, color='white', size=(1280,720), method='caption', align='center', font='Arial-Bold')
+    clip = clip.set_duration(12)
+    bg = ColorClip(size=(1280,720), color=(18,24,37)).set_duration(12)
+    video = CompositeVideoClip([bg, clip.set_pos('center')])
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    out = tmp.name
+    video.write_videofile(out, fps=24, codec="libx264", audio=False, verbose=False, logger=None)
+    return out
+
 def mansion_page():
+    play_music(MUSIC_MANSION)
     st.title("🏰 Mansion — Your Success Story")
     st.image("https://img.freepik.com/premium-photo/free-photo-luxurious-mansion-with-lush-garden-beautiful-sunset-background_650144-557.jpg?w=2000", width='stretch')
-    user_text = st.session_state.get("user_original", "")
-    
+    user_text = st.session_state.get("user_original","")
     if not user_text:
-        st.warning("No reflection found from your journey.")
+        st.warning("No reflection found.")
     else:
-        if st.button("🏰 Generate Story Image"):
-            story = f"🌍 Once a traveler carried these thoughts:\n\n“{user_text}”\n\n✨ They found resilience, and finally reached their mansion of peace."
-            with st.spinner("Rendering your story image..."):
-                image_path = create_image_from_text(story)
-                st.image(image_path)
+        if st.button("🏰 Generate Story Movie"):
+            with st.spinner("Rendering short motivational video..."):
+                path = create_video_from_text(build_success_story(user_text))
+                st.video(path)
                 st.success("Your story is complete! 🌟")
-                os.remove(image_path)
-        
-    if st.button("🔁 Restart Journey"):
-        st.session_state.clear()
-        st.experimental_rerun()
+                st.markdown("## 🎁 Bonus — Suggested Books")
+                st.write("📖 Man’s Search for Meaning — Viktor E. Frankl")
+                st.write("📖 The Untethered Soul — Michael A. Singer")
+                st.write("📖 Atomic Habits — James Clear")
 
-# --- HOME PAGE ---
+    if st.button("🔁 Restart Journey"):
+        for k in list(st.session_state.keys()):
+            st.session_state[k]=None
+        st.session_state.page="home"
+
+# ----------------------------
+# Home Page
+# ----------------------------
 def home_page():
+    play_music(MUSIC_HOME)
     st.title("🚦 Start Your Journey")
     st.markdown("Choose your mode of travel:")
     st.image("https://wallpaperaccess.com/full/4515512.jpg", width='stretch')
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    c1,c2,c3 = st.columns(3)
+    with c1:
         if st.button("🚆 Train"):
-            st.session_state.page = "train"
-            st.experimental_rerun()
-    with col2:
+            st.session_state.page="train"
+    with c2:
         if st.button("🚌 Bus"):
-            st.session_state.page = "bus"
-            st.experimental_rerun()
-    with col3:
+            st.session_state.page="bus"
+    with c3:
         if st.button("🚗 Car"):
-            st.session_state.page = "car"
-            st.experimental_rerun()
+            st.session_state.page="car"
 
-# --- ROUTER ---
-pages = {
-    "home": home_page,
-    "train": train_game,
-    "car": car_game,
-    "bus": bus_game,
-    "mansion": mansion_page,
-}
-pages[st.session_state.page]()
+# ----------------------------
+# Router
+# ----------------------------
+page=st.session_state.page
+if page=="home": home_page()
+elif page=="train": train_game()
+elif page=="car": car_game()
+elif page=="bus": bus_game()
+elif page=="mansion": mansion_page()
+else: home_page()
