@@ -1,9 +1,5 @@
-options:
-  logging: CLOUD_LOGGING_ONLY
-
 steps:
-  - name: 'gcr.io/buildpacks/builder'
-    args: ['pack', 'build', 'gcr.io/civil-ivy-472619-a7/journey2025', '--path', '.']
-
+  - name: 'gcr.io/k8s-skaffold/pack'
+    args: ['build', 'gcr.io/$PROJECT_ID/mentalillness', '--builder=gcr.io/buildpacks/builder:v1']
 images:
-  - 'gcr.io/civil-ivy-472619-a7/journey2025'
+  - 'gcr.io/$PROJECT_ID/mentalillness'
