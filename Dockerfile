@@ -1,25 +1,21 @@
-# Use official lightweight Python image
+# Use Python 3.9 slim image
 FROM python:3.9-slim
+
+# Install system dependencies (ffmpeg for moviepy/whisper, espeak for pyttsx3)
+RUN apt-get update && apt-get install -y ffmpeg espeak git && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Install system deps
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first (for caching)
+# Copy requirement file and install dependencies
 COPY requirements.txt .
-
-# Install Python deps
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy rest of app
+# Copy your app code
 COPY . .
 
-# Streamlit runs on port 8080 in Cloud Run
+# Expose Streamlit default port
 EXPOSE 8080
 
-# Run the app
+# Run the app with Streamlit
 CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
