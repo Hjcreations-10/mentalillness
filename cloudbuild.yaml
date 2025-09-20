@@ -1,5 +1,5 @@
 steps:
   - name: 'gcr.io/k8s-skaffold/pack'
-    args: ['build', 'gcr.io/$PROJECT_ID/mentalillness', '--builder=gcr.io/buildpacks/builder:v1']
+    args: ['build', 'gcr.io/civil-ivy-472619-a7/mentalillness', '--builder=gcr.io/buildpacks/builder:v1']
 images:
-  - 'gcr.io/$PROJECT_ID/mentalillness'
+  - 'gcr.io/civil-ivy-472619-a7/mentalillness'
