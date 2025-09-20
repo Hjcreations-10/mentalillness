@@ -1,7 +1,10 @@
 streamlit
-openai
-textblob
+whisper
 spacy
-moviepy
-torch
+textblob
 transformers
+langchain
+langchain-openai
+pyttsx3
+streamlit-mic-recorder
+moviepy
