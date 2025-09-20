@@ -13,7 +13,6 @@ import time
 import os
 import random
 
-#from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
 # ----------------------------
 # Page config & session init
 # ----------------------------
