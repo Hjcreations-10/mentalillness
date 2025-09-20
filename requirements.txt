@@ -1,17 +1,18 @@
 cat > requirements.txt <<'EOF'
 
-streamlit==1.38.0
-openai==1.45.0
-whisper==1.1.10
-spacy==3.7.5
-textblob==0.18.0
-transformers==4.44.2
-langchain==0.2.14
-langchain-openai==0.1.21
-pyttsx3==2.90
-streamlit-mic-recorder==0.0.8
-moviepy==1.0.3
-torch==2.4.1
-torchaudio==2.4.1
+streamlit
+openai
+whisper
+spacy
+textblob
+transformers
+langchain
+langchain_openai
+pyttsx3
+streamlit-mic-recorder
+moviepy
+torch
+torchaudio
+spacy[en]
 
 EOF
