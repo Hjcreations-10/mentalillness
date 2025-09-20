@@ -1,8 +1,9 @@
 cat > requirements.txt <<'EOF'
 streamlit
 openai
-whisper
+openai-whisper
 spacy
+spacy[en]
 textblob
 transformers
 langchain
@@ -12,6 +13,6 @@ streamlit-mic-recorder
 moviepy
 torch
 torchaudio
-spacy[en]
+
 
 EOF
