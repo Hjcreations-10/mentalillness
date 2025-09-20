@@ -1,10 +1,7 @@
 streamlit
-whisper
-spacy
+openai
 textblob
-transformers
-langchain
-langchain_openai
-pyttsx3
-streamlit_mic_recorder
+spacy
 moviepy
+torch
+transformers
