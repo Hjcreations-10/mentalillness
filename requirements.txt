@@ -10,7 +10,8 @@ langchain
 langchain_openai
 pyttsx3
 streamlit-mic-recorder
-
+openai-whisper
+Pillow
 torch
 torchaudio
 spacy[en]
