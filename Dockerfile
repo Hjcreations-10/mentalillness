@@ -1,24 +1,25 @@
-# Use official Python image
-FROM python:3.10-slim
+# Use official lightweight Python image
+FROM python:3.9-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (for audio/video + spacy)
+# Install system deps
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    espeak \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
+# Copy requirements first (for caching)
 COPY requirements.txt .
+
+# Install Python deps
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
+# Copy rest of app
 COPY . .
 
-# Expose Streamlit port
+# Streamlit runs on port 8080 in Cloud Run
 EXPOSE 8080
 
-# Run Streamlit
+# Run the app
 CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
